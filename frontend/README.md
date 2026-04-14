@@ -1,73 +1,68 @@
-# React + TypeScript + Vite
+# Frontend Documentation
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React + Vite UI for uploading media, tracking processing progress, and previewing/download processed output videos.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- Drag-and-drop upload for:
+  - source video
+  - ad asset image
+- Upload trigger to backend API.
+- Polling-based job status updates every 2 seconds.
+- Processing progress bar and status display.
+- Final video preview and download link.
+- Segment keyframe preview grid.
 
-## React Compiler
+## Tech Stack
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- React 19 + TypeScript
+- Vite
+- Zustand (state management)
+- Axios (HTTP)
+- React Dropzone
+- Lucide React (icons)
 
-## Expanding the ESLint configuration
+## Project Structure
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+- `src/App.tsx` - main upload and polling workflow UI.
+- `src/store/useStore.ts` - app state for job, progress, and output.
+- `src/App.css` - component-level styling.
+- `src/main.tsx` - app bootstrap.
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+## API Integration
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+Current API base URL is hardcoded in `src/App.tsx`:
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+`http://localhost:3001/api`
+
+Used endpoints:
+
+- `POST /upload`
+- `GET /status/:jobId`
+
+Static media URLs consumed from backend:
+
+- `http://localhost:3001/uploads/...`
+- `http://localhost:3001/temp/...`
+
+## Local Development
+
+```bash
+cd frontend
+pnpm install
+pnpm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Default Vite dev URL is typically `http://localhost:5173`.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## Scripts
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+- `pnpm run dev` - Start Vite dev server.
+- `pnpm run build` - Type-check and produce production build.
+- `pnpm run preview` - Preview production build locally.
+- `pnpm run lint` - Run ESLint.
+
+## Notes
+
+- Backend must be running on port `3001` for the default setup.
+- Upload button is enabled only when both required files are selected.
