@@ -74,11 +74,84 @@ header p {
   cursor: not-allowed;
 }
 
-.progress-section {
-  background: #fff;
-  padding: 2rem;
+.main-content {
+  display: flex;
+  flex-direction: column;
+  gap: 3rem;
+  margin-top: 2rem;
+}
+
+.previews-container {
+  display: flex;
+  justify-content: center;
+  gap: 2rem;
+  flex-wrap: wrap;
+}
+
+.preview-card {
+  background: white;
+  padding: 1rem;
   border-radius: 12px;
   box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+  width: 100%;
+  max-width: 350px;
+}
+
+.preview-card h3 {
+  margin-top: 0;
+  margin-bottom: 1rem;
+  font-size: 1rem;
+  color: #4b5563;
+}
+
+.preview-media {
+  width: 100%;
+  border-radius: 8px;
+  height: 200px;
+  object-fit: contain;
+  background: #f3f4f6;
+}
+
+.processing-section {
+  background: #fff;
+  padding: 2.5rem;
+  border-radius: 16px;
+  box-shadow: 0 10px 25px -5px rgb(0 0 0 / 0.1);
+  text-align: center;
+}
+
+.status-header h2 {
+  margin-top: 0;
+  color: #111827;
+}
+
+.status-text {
+  font-weight: 500;
+  color: #4b5563;
+}
+
+.result-section {
+  margin-top: 3rem;
+  padding-top: 2rem;
+  border-top: 1px solid #e5e7eb;
+}
+
+.result-section h3 {
+  font-size: 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.analysis-results {
+  margin-top: 4rem;
+  text-align: left;
+}
+
+.analysis-results h3 {
+  color: #4b5563;
+  font-size: 1.1rem;
+  margin-bottom: 1.5rem;
+  border-bottom: 2px solid #f3f4f6;
+  padding-bottom: 0.5rem;
 }
 
 .progress-bar-container {
