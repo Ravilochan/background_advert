@@ -1,0 +1,39 @@
+# Dependency directories
+node_modules/
+**/node_modules/
+
+# Build outputs
+dist/
+build/
+**/dist/
+**/build/
+
+# Git
+.git/
+.gitignore
+
+# Documentation and metadata
+README.md
+GEMINI.md
+prd_v1.md
+prd_v2.md
+prompt_v1.md
+prompt_v2.md
+
+# Environment variables
+.env
+.env.*
+
+# Logs
+*.log
+logs/
+
+# Testing
+coverage/
+
+# OS metadata
+.DS_Store
+
+# Temporary files
+backend/src/temp/
+backend/src/uploads/
