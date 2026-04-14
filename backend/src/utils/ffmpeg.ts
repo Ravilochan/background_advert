@@ -119,6 +119,29 @@ export const renderSegment = async (params: RenderParams): Promise<void> => {
   }
 };
 
+export const renderPreviewFrame = async (
+  framePath: string,
+  assetPath: string,
+  outputPath: string,
+  region: { x: number; y: number; width: number; height: number }
+): Promise<void> => {
+  const filter = `
+    [1:v]scale=${region.width}:${region.height},
+    format=rgba,
+    colorchannelmixer=aa=0.9[ad];
+    [0:v][ad]overlay=x=${region.x}:y=${region.y}
+  `.replace(/\s+/g, '');
+
+  const command = `ffmpeg -y -i "${framePath}" -i "${assetPath}" -filter_complex "${filter}" -frames:v 1 "${outputPath}"`;
+
+  try {
+    await execPromise(command);
+  } catch (error) {
+    console.error('Error rendering preview frame:', error);
+    throw error;
+  }
+};
+
 export const concatenateVideos = async (videoPaths: string[], outputPath: string): Promise<void> => {
   const listPath = path.join(path.dirname(outputPath), 'concat_list.txt');
   const content = videoPaths.map(p => `file '${path.resolve(p)}'`).join('\n');

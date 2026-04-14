@@ -2,93 +2,130 @@ import { Queue, Worker, Job } from 'bullmq';
 import path from 'path';
 import fs from 'fs';
 import redisConnection from '../utils/redis.js';
-import { extractKeyframesAndDetectScenes, renderSegment } from '../utils/ffmpeg.js';
+import { extractKeyframesAndDetectScenes, renderSegment, renderPreviewFrame } from '../utils/ffmpeg.js';
 import { analyzeFrame } from './ai.js';
 
 export const videoQueue = new Queue('video-processing', {
   connection: redisConnection,
   defaultJobOptions: {
     removeOnComplete: {
-      age: 3600, // keep up to 1 hour
-      count: 100, // keep up to 100 jobs
+      age: 3600,
+      count: 100,
     },
     removeOnFail: {
-      age: 24 * 3600, // keep up to 24 hours
+      age: 24 * 3600,
     },
   },
 });
 
-interface VideoJobData {
+interface AnalysisJobData {
+  type: 'analyze';
   videoId: string;
-  assetId: string;
   videoPath: string;
   assetPath: string;
 }
 
+interface RenderJobData {
+  type: 'render';
+  videoId: string;
+  videoPath: string;
+  assetPath: string;
+  analyzedSegments: any[];
+}
+
 export const videoWorker = new Worker(
   'video-processing',
-  async (job: Job<VideoJobData>) => {
-    const { videoId, videoPath, assetPath } = job.data;
+  async (job: Job<AnalysisJobData | RenderJobData>) => {
+    const { videoId, videoPath } = job.data;
     const outputDir = path.join(process.cwd(), 'temp', videoId);
-    const finalOutputPath = path.join(process.cwd(), 'uploads', `processed_${videoId}`);
 
     if (!fs.existsSync(outputDir)) {
       fs.mkdirSync(outputDir, { recursive: true });
     }
 
-    try {
-      await job.updateProgress(10);
-      
-      // Phase 1: Scene Detection & Keyframe Extraction
-      const segments = await extractKeyframesAndDetectScenes(videoPath, outputDir);
-      await job.updateProgress(30);
+    if (job.data.type === 'analyze') {
+      const { assetPath } = job.data;
+      try {
+        await job.updateProgress(10);
+        // Phase 1: Scene Detection & Keyframe Extraction
+        const segments = await extractKeyframesAndDetectScenes(videoPath, outputDir);
+        await job.updateProgress(30);
 
-      // Phase 2: AI Analysis (1 frame per segment)
-      const analyzedSegments = [];
-      for (let i = 0; i < segments.length; i++) {
-        const segment = segments[i];
-        if (segment) {
-          const analysis = await analyzeFrame(segment.keyframePath);
-          analyzedSegments.push({
-            ...segment,
-            analysis,
-          });
+        // Phase 2: AI Analysis
+        const analyzedSegments = [];
+        for (let i = 0; i < segments.length; i++) {
+          const segment = segments[i];
+          if (segment) {
+            const analysis = await analyzeFrame(segment.keyframePath);
+            
+            // Generate preview frame if a region was recommended
+            let previewFramePath = null;
+            if (analysis.recommendedRegion) {
+              const previewName = `preview_${i}.jpg`;
+              const fullPreviewPath = path.join(outputDir, previewName);
+              await renderPreviewFrame(
+                segment.keyframePath,
+                assetPath,
+                fullPreviewPath,
+                analysis.recommendedRegion
+              );
+              previewFramePath = fullPreviewPath;
+            }
+
+            analyzedSegments.push({
+              ...segment,
+              analysis,
+              previewFramePath,
+            });
+          }
+          await job.updateProgress(30 + Math.floor(((i + 1) / segments.length) * 70));
         }
-        await job.updateProgress(30 + Math.floor(((i + 1) / segments.length) * 30));
-      }
 
-      // Phase 4: Rendering
-      let currentVideoPath = videoPath;
-      for (let i = 0; i < analyzedSegments.length; i++) {
-        const seg = analyzedSegments[i];
-        if (seg && seg.analysis && seg.analysis.recommendedRegion) {
-          const tempOut = path.join(outputDir, `rendered_${i}.mp4`);
-          await renderSegment({
-            videoPath: currentVideoPath,
-            assetPath,
-            outputPath: tempOut,
-            startTime: seg.startTime,
-            endTime: seg.endTime,
-            region: seg.analysis.recommendedRegion
-          });
-          currentVideoPath = tempOut;
+        return {
+          type: 'analysis_complete',
+          segments: analyzedSegments,
+          videoId,
+          videoPath,
+          assetPath,
+        };
+      } catch (error) {
+        console.error(`Analysis Job ${job.id} failed:`, error);
+        throw error;
+      }
+    } else if (job.data.type === 'render') {
+      const { assetPath, analyzedSegments } = job.data;
+      const finalOutputPath = path.join(process.cwd(), 'uploads', `processed_${videoId}`);
+
+      try {
+        await job.updateProgress(10);
+        let currentVideoPath = videoPath;
+        
+        for (let i = 0; i < analyzedSegments.length; i++) {
+          const seg = analyzedSegments[i];
+          if (seg && seg.analysis && seg.analysis.recommendedRegion) {
+            const tempOut = path.join(outputDir, `rendered_${i}.mp4`);
+            await renderSegment({
+              videoPath: currentVideoPath,
+              assetPath,
+              outputPath: tempOut,
+              startTime: seg.startTime,
+              endTime: seg.endTime,
+              region: seg.analysis.recommendedRegion
+            });
+            currentVideoPath = tempOut;
+          }
+          await job.updateProgress(10 + Math.floor(((i + 1) / analyzedSegments.length) * 90));
         }
-        await job.updateProgress(60 + Math.floor(((i + 1) / analyzedSegments.length) * 30));
+
+        fs.copyFileSync(currentVideoPath, finalOutputPath);
+        return {
+          type: 'render_complete',
+          processedVideoUrl: `/uploads/processed_${videoId}`,
+        };
+      } catch (error) {
+        console.error(`Render Job ${job.id} failed:`, error);
+        throw error;
       }
-
-      // Final move to uploads
-      fs.copyFileSync(currentVideoPath, finalOutputPath);
-
-      await job.updateProgress(100);
-      
-      return {
-        segments: analyzedSegments,
-        processedVideoUrl: `/uploads/processed_${videoId}`,
-        message: 'Processing complete.',
-      };
-    } catch (error) {
-      console.error(`Job ${job.id} failed:`, error);
-      throw error;
     }
   },
   { connection: redisConnection }

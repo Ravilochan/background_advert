@@ -43,24 +43,47 @@ router.post('/upload', upload.fields([
   const videoFile = files.video[0];
   const assetFile = files.asset[0];
 
-  const job = await videoQueue.add('process-video', {
+  const job = await videoQueue.add('analyze-video', {
+    type: 'analyze',
     videoId: videoFile.filename,
-    assetId: assetFile.filename,
     videoPath: videoFile.path,
     assetPath: assetFile.path,
   });
 
   res.json({
-    message: 'Files uploaded successfully. Processing started.',
+    message: 'Files uploaded successfully. Analysis started.',
     jobId: job.id,
     video: {
       id: videoFile.filename,
+      path: videoFile.path,
       originalName: videoFile.originalname,
     },
     asset: {
       id: assetFile.filename,
+      path: assetFile.path,
       originalName: assetFile.originalname,
     }
+  });
+});
+
+router.post('/confirm-render', async (req, res) => {
+  const { videoId, videoPath, assetPath, analyzedSegments } = req.body;
+
+  if (!videoId || !videoPath || !assetPath || !analyzedSegments) {
+    return res.status(400).json({ error: 'Missing required data for rendering' });
+  }
+
+  const job = await videoQueue.add('render-video', {
+    type: 'render',
+    videoId,
+    videoPath,
+    assetPath,
+    analyzedSegments,
+  });
+
+  res.json({
+    message: 'Rendering started.',
+    jobId: job.id,
   });
 });
 
