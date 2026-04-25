@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
 import axios from 'axios';
-import { Upload, Video, Image as ImageIcon, Loader2, CheckCircle2 } from 'lucide-react';
+import { Upload, Video, Image as ImageIcon, Loader2, CheckCircle2, Settings2, RefreshCw } from 'lucide-react';
 import { useStore } from './store/useStore';
 import './App.css';
 
@@ -11,13 +11,15 @@ function App() {
   const { 
     jobId, videoId, videoPath, assetPath, status, progress, segments, processedVideoUrl, 
     videoPreview, assetPreview, 
-    setVideoData, updateStatus, setAnalysisResult, setRenderResult, setRenderJobId, setPreviews 
+    setVideoData, updateStatus, setAnalysisResult, setRenderResult, setRenderJobId, setPreviews, updateSegment 
   } = useStore();
   
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [assetFile, setAssetFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isRendering, setIsRendering] = useState(false);
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [isRegenerating, setIsRegenerating] = useState(false);
 
   const onVideoDrop = useCallback((acceptedFiles: File[]) => {
     const file = acceptedFiles[0];
@@ -68,6 +70,31 @@ function App() {
       console.error('Upload failed', error);
     } finally {
       setIsUploading(false);
+    }
+  };
+
+  const handleRegenerate = async (index: number) => {
+    const segment = segments[index];
+    if (!segment || !videoId || !assetPath) return;
+
+    setIsRegenerating(true);
+    try {
+      const response = await axios.post(`${API_BASE_URL}/regenerate-preview`, {
+        videoId,
+        keyframePath: segment.keyframePath,
+        assetPath,
+        customPrompt: segment.analysis.promptUsed,
+        segmentIndex: index,
+      });
+
+      updateSegment(index, {
+        analysis: response.data.analysis,
+        previewFramePath: response.data.previewFramePath,
+      });
+    } catch (error) {
+      console.error('Regeneration failed', error);
+    } finally {
+      setIsRegenerating(false);
     }
   };
 
@@ -171,7 +198,7 @@ function App() {
               className="upload-button"
             >
               {isUploading ? <Loader2 className="animate-spin" /> : <Upload />}
-              {isUploading ? 'Analyze Video' : 'Step 1: Analyze Video'}
+              {isUploading ? 'Analyzing Video' : 'Step 1: Analyze Video'}
             </button>
           </div>
         ) : (
@@ -234,7 +261,7 @@ function App() {
                 <h3>Detected Placements (Comparison)</h3>
                 <div className="segments-grid">
                   {segments.map((segment, idx) => (
-                    <div key={idx} className="segment-card comparison-card">
+                    <div key={idx} className={`segment-card comparison-card ${editingIndex === idx ? 'editing' : ''}`}>
                       <div className="comparison-views">
                         <div className="view">
                           <span>Original</span>
@@ -248,7 +275,79 @@ function App() {
                         )}
                       </div>
                       <div className="card-info">
-                        <p><strong>Time:</strong> {segment.startTime.toFixed(2)}s - {segment.endTime.toFixed(2)}s</p>
+                        <div className="info-header">
+                          <p><strong>Time:</strong> {segment.startTime.toFixed(2)}s - {segment.endTime.toFixed(2)}s</p>
+                          <button 
+                            className="pro-mode-toggle"
+                            onClick={() => setEditingIndex(editingIndex === idx ? null : idx)}
+                          >
+                            <Settings2 size={16} />
+                            {editingIndex === idx ? 'Close Pro Mode' : 'Pro Mode (Edit Prompt)'}
+                          </button>
+                        </div>
+                        
+                        {editingIndex === idx && (
+                          <div className="pro-mode-panel">
+                            <h4>AI Prompt</h4>
+                            <textarea 
+                              value={segment.analysis.promptUsed}
+                              onChange={(e) => updateSegment(idx, { 
+                                analysis: { ...segment.analysis, promptUsed: e.target.value }
+                              })}
+                              placeholder="Enter custom AI instructions..."
+                              className="prompt-editor"
+                            />
+                            <div className="render-options">
+                              <div className="option">
+                                <label>Opacity: {segment.analysis.renderOptions.opacity}</label>
+                                <input 
+                                  type="range" min="0.1" max="1.0" step="0.1"
+                                  value={segment.analysis.renderOptions.opacity}
+                                  onChange={(e) => updateSegment(idx, {
+                                    analysis: { 
+                                      ...segment.analysis, 
+                                      renderOptions: { ...segment.analysis.renderOptions, opacity: parseFloat(e.target.value) }
+                                    }
+                                  })}
+                                />
+                              </div>
+                              <div className="option">
+                                <label>Blur: {segment.analysis.renderOptions.blur}</label>
+                                <input 
+                                  type="range" min="0" max="10" step="1"
+                                  value={segment.analysis.renderOptions.blur}
+                                  onChange={(e) => updateSegment(idx, {
+                                    analysis: { 
+                                      ...segment.analysis, 
+                                      renderOptions: { ...segment.analysis.renderOptions, blur: parseInt(e.target.value) }
+                                    }
+                                  })}
+                                />
+                              </div>
+                              <div className="option">
+                                <label>Brightness: {segment.analysis.renderOptions.brightness}</label>
+                                <input 
+                                  type="range" min="-1.0" max="1.0" step="0.1"
+                                  value={segment.analysis.renderOptions.brightness}
+                                  onChange={(e) => updateSegment(idx, {
+                                    analysis: { 
+                                      ...segment.analysis, 
+                                      renderOptions: { ...segment.analysis.renderOptions, brightness: parseFloat(e.target.value) }
+                                    }
+                                  })}
+                                />
+                              </div>
+                            </div>
+                            <button 
+                              className="regenerate-button"
+                              onClick={() => handleRegenerate(idx)}
+                              disabled={isRegenerating}
+                            >
+                              {isRegenerating ? <Loader2 className="animate-spin" /> : <RefreshCw size={16} />}
+                              Regenerate Preview
+                            </button>
+                          </div>
+                        )}
                         <p><strong>Confidence:</strong> {(segment.analysis.recommendedRegion ? 0.95 : 0).toFixed(2)}</p>
                       </div>
                     </div>

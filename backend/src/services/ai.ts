@@ -15,6 +15,12 @@ export interface SafeRegion {
   confidence: number;
 }
 
+export interface RenderOptions {
+  opacity: number;
+  blur: number;
+  brightness: number;
+}
+
 export interface AnalysisResult {
   safeRegions: SafeRegion[];
   recommendedRegion: {
@@ -23,30 +29,41 @@ export interface AnalysisResult {
     width: number;
     height: number;
   };
+  renderOptions: RenderOptions;
+  promptUsed?: string;
 }
 
-export const analyzeFrame = async (imagePath: string): Promise<AnalysisResult> => {
+export const DEFAULT_ANALYSIS_PROMPT = `
+Analyze this frame and identify STATIC background regions suitable for subtle advertisement placement.
+
+You must also recommend visual characteristics (opacity, blur, brightness) to make the asset blend naturally into the scene, matching the local lighting and depth.
+
+STRICT RULES:
+- Ignore humans, faces, and foreground objects
+- Only choose flat/static surfaces (walls, boards, empty areas)
+- Avoid moving regions
+- Prefer stable regions across frames
+
+Return ONLY JSON in the following format:
+{
+  "safeRegions": [
+    { "x": number, "y": number, "width": number, "height": number, "stabilityScore": number, "confidence": number }
+  ],
+  "recommendedRegion": { "x": number, "y": number, "width": number, "height": number },
+  "renderOptions": {
+    "opacity": number (0.1 to 1.0, e.g. 0.9 for slight transparency),
+    "blur": number (0 to 10, e.g. 0 for sharp, 2 for slight background blur),
+    "brightness": number (-1.0 to 1.0, e.g. 0 for no change, -0.1 for darker)
+  }
+}
+All coordinates and dimensions should be in pixels relative to the image size.
+`;
+
+export const analyzeFrame = async (imagePath: string, customPrompt?: string): Promise<AnalysisResult> => {
   // Using gemini-3-flash-preview as per 2026 documentation for fast visual reasoning
   const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
 
-  const prompt = `
-    Analyze this frame and identify STATIC background regions suitable for subtle advertisement placement.
-    
-    STRICT RULES:
-    - Ignore humans, faces, and foreground objects
-    - Only choose flat/static surfaces (walls, boards, empty areas)
-    - Avoid moving regions
-    - Prefer stable regions across frames
-    
-    Return ONLY JSON in the following format:
-    {
-      "safeRegions": [
-        { "x": number, "y": number, "width": number, "height": number, "stabilityScore": number, "confidence": number }
-      ],
-      "recommendedRegion": { "x": number, "y": number, "width": number, "height": number }
-    }
-    All coordinates and dimensions should be in pixels relative to the image size.
-  `;
+  const promptToUse = customPrompt || DEFAULT_ANALYSIS_PROMPT;
 
   const imageData = fs.readFileSync(imagePath);
   const result = await model.generateContent([
@@ -56,7 +73,7 @@ export const analyzeFrame = async (imagePath: string): Promise<AnalysisResult> =
         mimeType: "image/jpeg",
       },
     },
-    { text: prompt },
+    { text: promptToUse },
   ]);
 
   const response = result.response;
@@ -69,7 +86,15 @@ export const analyzeFrame = async (imagePath: string): Promise<AnalysisResult> =
     throw new Error("Failed to parse AI response as JSON");
   }
 
-  return JSON.parse(jsonMatch[0]) as AnalysisResult;
+  const analysis = JSON.parse(jsonMatch[0]) as AnalysisResult;
+  analysis.promptUsed = promptToUse;
+  
+  // Ensure default fallback values for renderOptions if AI omits them
+  if (!analysis.renderOptions) {
+    analysis.renderOptions = { opacity: 0.9, blur: 0, brightness: 0 };
+  }
+
+  return analysis;
 };
 
 export const generatePreview = async (
@@ -77,7 +102,6 @@ export const generatePreview = async (
   assetPath: string,
   region: { x: number; y: number; width: number; height: number }
 ): Promise<string> => {
-  // Using gemini-3-pro-image-preview for professional asset production/generation as per 2026 docs
   const model = genAI.getGenerativeModel({ model: "gemini-3-pro-image-preview" });
 
   const prompt = `

@@ -7,3 +7,4 @@
 - **File Storage:** Local File System
 - **State Management:** Zustand
 - **Styling:** Vanilla CSS (as per system defaults for new apps)
+gemini --resume f27a16ea-7966-4ae2-b1ca-44e62bc4aa38

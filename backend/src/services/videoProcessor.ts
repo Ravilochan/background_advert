@@ -67,7 +67,8 @@ export const videoWorker = new Worker(
                 segment.keyframePath,
                 assetPath,
                 fullPreviewPath,
-                analysis.recommendedRegion
+                analysis.recommendedRegion,
+                analysis.renderOptions
               );
               previewFramePath = fullPreviewPath;
             }
@@ -110,7 +111,8 @@ export const videoWorker = new Worker(
               outputPath: tempOut,
               startTime: seg.startTime,
               endTime: seg.endTime,
-              region: seg.analysis.recommendedRegion
+              region: seg.analysis.recommendedRegion,
+              options: seg.analysis.renderOptions
             });
             currentVideoPath = tempOut;
           }

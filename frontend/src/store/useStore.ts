@@ -18,6 +18,7 @@ interface VideoState {
   setAnalysisResult: (result: any) => void;
   setRenderResult: (result: any) => void;
   setRenderJobId: (jobId: string) => void;
+  updateSegment: (index: number, updatedData: any) => void;
 }
 
 export const useStore = create<VideoState>((set) => ({
@@ -59,5 +60,10 @@ export const useStore = create<VideoState>((set) => ({
     status: 'completed',
     processedVideoUrl: result.processedVideoUrl,
     progress: 100
+  }),
+  updateSegment: (index, updatedData) => set((state) => {
+    const newSegments = [...state.segments];
+    newSegments[index] = { ...newSegments[index], ...updatedData };
+    return { segments: newSegments };
   }),
 }));

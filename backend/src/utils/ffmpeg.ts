@@ -22,7 +22,6 @@ export const extractKeyframesAndDetectScenes = async (
   // Detect scenes and extract keyframes. Output metadata to stderr.
   // Using -fps_mode vfr instead of deprecated -vsync.
   // Forcing -pix_fmt yuv420p for MJPEG compatibility with 10-bit/4:2:2 inputs.
-  // Added -update 1 as a fallback or ensuring we get output.
   const command = `ffmpeg -i "${videoPath}" -vf "select='gt(scene,0.1)+eq(n,0)',metadata=print" -fps_mode vfr -pix_fmt yuv420p -q:v 2 "${path.join(outputDir, 'keyframe_%03d.jpg')}"`;
 
   try {
@@ -55,8 +54,6 @@ export const extractKeyframesAndDetectScenes = async (
       const startTime = timestamps[i] ?? 0;
       const endTime = timestamps[i + 1] ?? duration;
       
-      // Map each segment to the corresponding keyframe file
-      // If there are more segments than files (e.g. first segment at 0), handle it.
       const keyframeFile = files[i] || files[files.length - 1];
       
       if (keyframeFile) {
@@ -93,23 +90,41 @@ export interface RenderParams {
     width: number;
     height: number;
   };
+  options: {
+    opacity: number;
+    blur: number;
+    brightness: number;
+  };
 }
 
-export const renderSegment = async (params: RenderParams): Promise<void> => {
-  const { videoPath, assetPath, outputPath, startTime, endTime, region } = params;
+const buildFilterGraph = (params: RenderParams) => {
+  const { region, options, startTime, endTime } = params;
+  
+  // 1. Scale asset
+  // 2. Adjust opacity (alpha)
+  // 3. Apply blur if needed
+  // 4. Adjust brightness/contrast (eq filter)
+  // 5. Overlay on video
+  
+  let assetFilters = `scale=${region.width}:${region.height},format=rgba,colorchannelmixer=aa=${options.opacity}`;
+  
+  if (options.blur > 0) {
+    assetFilters += `,gblur=sigma=${options.blur}`;
+  }
+  
+  if (options.brightness !== 0) {
+    assetFilters += `,eq=brightness=${options.brightness}`;
+  }
 
-  // sx0,sy0 = top-left
-  // sx1,sy1 = top-right
-  // sx2,sy2 = bottom-left
-  // sx3,sy3 = bottom-right
-  const filter = `
-    [1:v]scale=${region.width}:${region.height},
-    format=rgba,
-    colorchannelmixer=aa=0.9[ad];
+  return `
+    [1:v]${assetFilters}[ad];
     [0:v][ad]overlay=x=${region.x}:y=${region.y}:enable='between(t,${startTime},${endTime})'
   `.replace(/\s+/g, '');
+};
 
-  const command = `ffmpeg -y -i "${videoPath}" -i "${assetPath}" -filter_complex "${filter}" -pix_fmt yuv420p -c:a copy "${outputPath}"`;
+export const renderSegment = async (params: RenderParams): Promise<void> => {
+  const filter = buildFilterGraph(params);
+  const command = `ffmpeg -y -i "${params.videoPath}" -i "${params.assetPath}" -filter_complex "${filter}" -pix_fmt yuv420p -c:a copy "${params.outputPath}"`;
 
   try {
     await execPromise(command);
@@ -123,16 +138,21 @@ export const renderPreviewFrame = async (
   framePath: string,
   assetPath: string,
   outputPath: string,
-  region: { x: number; y: number; width: number; height: number }
+  region: { x: number; y: number; width: number; height: number },
+  options: { opacity: number; blur: number; brightness: number }
 ): Promise<void> => {
-  const filter = `
-    [1:v]scale=${region.width}:${region.height},
-    format=rgba,
-    colorchannelmixer=aa=0.9[ad];
-    [0:v][ad]overlay=x=${region.x}:y=${region.y}
-  `.replace(/\s+/g, '');
+  const params: RenderParams = {
+    videoPath: framePath,
+    assetPath,
+    outputPath,
+    startTime: 0,
+    endTime: 1, // Single frame
+    region,
+    options
+  };
 
-  const command = `ffmpeg -y -i "${framePath}" -i "${assetPath}" -filter_complex "${filter}" -frames:v 1 "${outputPath}"`;
+  const filter = buildFilterGraph(params);
+  const command = `ffmpeg -y -i "${framePath}" -i "${assetPath}" -filter_complex "${filter}" -frames:v 1 -pix_fmt yuv420p "${outputPath}"`;
 
   try {
     await execPromise(command);

@@ -5,6 +5,8 @@ import { v4 as uuidv4 } from 'uuid';
 import fs from 'fs';
 
 import { videoQueue } from '../services/videoProcessor.js';
+import { analyzeFrame } from '../services/ai.js';
+import { renderPreviewFrame } from '../utils/ffmpeg.js';
 
 const router = Router();
 
@@ -64,6 +66,40 @@ router.post('/upload', upload.fields([
       originalName: assetFile.originalname,
     }
   });
+});
+
+router.post('/regenerate-preview', async (req, res) => {
+  const { videoId, keyframePath, assetPath, customPrompt, segmentIndex } = req.body;
+
+  if (!keyframePath || !assetPath || !videoId) {
+    return res.status(400).json({ error: 'Missing required data' });
+  }
+
+  try {
+    // 1. Re-analyze with custom prompt
+    const analysis = await analyzeFrame(keyframePath, customPrompt);
+    
+    // 2. Re-render preview frame
+    const outputDir = path.join(process.cwd(), 'temp', videoId);
+    const previewName = `preview_${segmentIndex}_${Date.now()}.jpg`; // Unique name to avoid browser cache
+    const fullPreviewPath = path.join(outputDir, previewName);
+    
+    await renderPreviewFrame(
+      keyframePath,
+      assetPath,
+      fullPreviewPath,
+      analysis.recommendedRegion,
+      analysis.renderOptions
+    );
+
+    res.json({
+      analysis,
+      previewFramePath: fullPreviewPath,
+    });
+  } catch (error) {
+    console.error('Regeneration failed:', error);
+    res.status(500).json({ error: 'Failed to regenerate preview' });
+  }
 });
 
 router.post('/confirm-render', async (req, res) => {
